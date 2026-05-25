@@ -1,0 +1,60 @@
+{
+  "_comentario": "Copia este fichero como config.json y rellena tus credenciales.",
+  "telegram": {
+    "token": "TU_BOT_TOKEN",
+    "chat_id": "TU_CHAT_ID"
+  },
+  "gemini": {
+    "api_key": "TU_GEMINI_API_KEY",
+    "model": "gemini-2.5-flash"
+  },
+  "openrouter": {
+    "api_key": "TU_OPENROUTER_API_KEY",
+    "model": "anthropic/claude-3.5-haiku",
+    "available_models": [
+      "anthropic/claude-3.5-haiku",
+      "anthropic/claude-3.5-sonnet",
+      "anthropic/claude-3-opus",
+      "google/gemini-flash-1.5",
+      "google/gemini-2.5-flash-preview",
+      "openai/gpt-4o-mini",
+      "openai/gpt-4o",
+      "meta-llama/llama-3.3-70b-instruct",
+      "mistralai/mistral-large"
+    ]
+  },
+  "gmail_accounts": [
+    {
+      "alias": "cuenta1",
+      "email": "cuenta1@gmail.com",
+      "credentials_file": "credentials/credentials_gmail.json",
+      "token_file": "credentials/token_cuenta1.json",
+      "can_send": true
+    },
+    {
+      "alias": "cuenta2",
+      "email": "cuenta2@gmail.com",
+      "credentials_file": "credentials/credentials_gmail.json",
+      "token_file": "credentials/token_cuenta2.json",
+      "can_send": false,
+      "can_calendar": true
+    }
+  ],
+  "google_calendar": {
+    "default_account_alias": "cuenta1",
+    "credentials_file": "credentials/credentials_gmail.json",
+    "token_file": "credentials/token_cuenta1.json",
+    "timezone": "Europe/Madrid"
+  },
+  "tado": {
+    "_nota": "Ejecuta tado_setup.py para autenticarte. No se necesita contraseña."
+  },
+  "marine": {
+    "stormglass_api_key": "TU_STORMGLASS_API_KEY",
+    "default_location": "Zarautz"
+  },
+  "database": {
+    "path": "db/reminders.db"
+  },
+  "dashboard_port": 8080
+}

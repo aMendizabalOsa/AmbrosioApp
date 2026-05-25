@@ -1,0 +1,9 @@
+config.json
+credentials/
+db/
+__pycache__/
+*.pyc
+.env
+*.egg-info/
+dist/
+build/

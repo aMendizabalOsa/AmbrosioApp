@@ -1,0 +1,12 @@
+python-telegram-bot>=20.7
+google-genai>=1.0.0
+openai>=1.30.0
+google-auth>=2.28.0
+google-auth-oauthlib>=1.2.0
+google-auth-httplib2>=0.2.0
+google-api-python-client>=2.120.0
+APScheduler>=3.10.4
+aiosqlite>=0.19.0
+requests>=2.31.0
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
