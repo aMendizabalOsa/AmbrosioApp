@@ -199,11 +199,13 @@ class CalendarAgent(BaseAgent):
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
                 creds.refresh(Request())
+                token_path.write_text(creds.to_json(), encoding="utf-8")
             else:
-                flow = InstalledAppFlow.from_client_secrets_file(creds_path, self._scopes)
-                creds = flow.run_local_server(port=0)
-            token_path.parent.mkdir(parents=True, exist_ok=True)
-            token_path.write_text(creds.to_json(), encoding="utf-8")
+                alias = self.account.get("alias", self.account.get("email", "?"))
+                raise RuntimeError(
+                    f"Token de Google Calendar caducado o inválido para '{alias}'. "
+                    "Ejecuta: python setup_oauth.py"
+                )
 
         return build("calendar", "v3", credentials=creds)
 

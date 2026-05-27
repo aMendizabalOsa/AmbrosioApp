@@ -184,6 +184,21 @@ TOOLS: list[dict] = [
         },
     },
     {
+        "name": "get_portfolio",
+        "description": (
+            "Consulta el portfolio de inversiones de Trade Republic: "
+            "valor total, posiciones (acciones y ETFs), precio actual, "
+            "coste medio y ganancia/pérdida de cada posición. "
+            "Usar cuando el usuario pregunte por sus inversiones, acciones, "
+            "ETFs, portfolio, Trade Republic, rentabilidad o cuánto lleva ganado/perdido."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+    {
         "name": "get_marine_forecast",
         "description": (
             "Obtiene el parte de olas (altura, periodo, swell) y las horas exactas de "

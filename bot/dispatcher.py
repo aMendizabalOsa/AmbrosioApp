@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from agents.marine_agent import MarineAgent
     from agents.reminder_agent import ReminderAgent
     from agents.tado_agent import TadoAgent
+    from agents.traderepublic_agent import TradeRepublicAgent
 
 import logging
 logger = logging.getLogger(__name__)
@@ -36,6 +37,7 @@ class ActionDispatcher:
         calendar_agents: "dict[str, CalendarAgent] | None" = None,
         marine_agent: "MarineAgent | None" = None,
         tado_agent: "TadoAgent | None" = None,
+        tr_agent: "TradeRepublicAgent | None" = None,
     ) -> None:
         self._gmail_read = gmail_read_agent
         self._gmail_send = gmail_send_agent
@@ -44,6 +46,7 @@ class ActionDispatcher:
         self._calendar_agents: dict[str, CalendarAgent] = calendar_agents or {"anjel": calendar_agent}
         self._marine = marine_agent
         self._tado = tado_agent
+        self._tr = tr_agent
 
     async def dispatch(self, tool_name: str, tool_input: dict) -> str:
         """
@@ -71,6 +74,8 @@ class ActionDispatcher:
                 return await asyncio.to_thread(self._get_email_summary, **tool_input)
             case "list_upcoming_events":
                 return await asyncio.to_thread(self._list_upcoming_events, **tool_input)
+            case "get_portfolio":
+                return await asyncio.to_thread(self._get_portfolio)
             case "get_marine_forecast":
                 return await asyncio.to_thread(self._get_marine_forecast, **tool_input)
             case "get_home_climate":
@@ -202,7 +207,7 @@ class ActionDispatcher:
                     ev["_cuenta"] = alias
                     all_events.append(ev)
             except Exception as exc:
-                logger.warning("Error consultando calendario de %s: %s", alias, exc)
+                logger.exception("Error consultando calendario de %s", alias)
                 errors.append(f"{alias}: {exc}")
 
         if not all_events and errors:
@@ -325,6 +330,57 @@ class ActionDispatcher:
                 lines.append(f"  {icon} {tipo}: {t['time']}h {height}")
 
         return "\n".join(lines)
+
+
+    def _get_portfolio(self) -> str:
+        if self._tr is None:
+            return "⚠️ El agente de Trade Republic no está configurado."
+
+        data = self._tr.run()
+        positions = data["positions"]
+        total_val = data["total_value"]
+        total_inv = data["total_invested"]
+        total_pnl = data["total_pnl"]
+        total_pct = data["total_pnl_pct"]
+        cash      = data["cash"]
+
+        pnl_icon = "📈" if total_pnl >= 0 else "📉"
+        pnl_sign = "+" if total_pnl >= 0 else ""
+        pct_sign = "+" if total_pct >= 0 else ""
+
+        lines = [
+            f"{pnl_icon} *Portfolio Trade Republic*\n",
+            f"💰 Valor total: *{_fmt(total_val)} €*",
+            f"  📊 Invertido: {_fmt(total_inv)} €",
+            f"  💵 Efectivo: {_fmt(cash)} €",
+            f"  {'📈' if total_pnl >= 0 else '📉'} P&L: *{pnl_sign}{_fmt(total_pnl)} €* ({pct_sign}{total_pct:.1f}%)",
+            "",
+            "*Posiciones:*",
+        ]
+
+        has_estimated = any(p.get("estimated") for p in positions)
+
+        for pos in positions:
+            name = _esc(pos["name"])
+            val  = _fmt(pos["value"])
+            pnl  = pos["pnl"]
+            pct  = pos["pnl_pct"]
+            sign = "+" if pnl >= 0 else ""
+            est_note = " _\\(est\\.\\)_" if pos.get("estimated") else ""
+            lines.append(
+                f"• *{name}* — {val} €{est_note} ({sign}{_fmt(pnl)} / {sign}{pct:.1f}%)"
+            )
+
+        if has_estimated:
+            lines.append("\n_\\(est\\.\\) precio no disponible en tiempo real; se muestra el coste medio._")
+
+        return "\n".join(lines)
+
+
+def _fmt(value: float) -> str:
+    """Formatea número con separador de miles y 2 decimales (estilo europeo)."""
+    formatted = f"{abs(value):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"-{formatted}" if value < 0 else formatted
 
 
 def _esc(text: str) -> str:

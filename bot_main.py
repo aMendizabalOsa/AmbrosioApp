@@ -26,6 +26,7 @@ from agents.gmail_send_agent import GmailSendAgent
 from agents.marine_agent import MarineAgent
 from agents.reminder_agent import ReminderAgent
 from agents.tado_agent import TadoAgent
+from agents.traderepublic_agent import TradeRepublicAgent
 from bot.dispatcher import ActionDispatcher
 from bot.handlers import handle_error, handle_message, handle_reset, handle_start, handle_voice
 from bot.tool_definitions import TOOLS
@@ -79,6 +80,7 @@ def main() -> None:
             calendar_agents[alias] = CalendarAgent(acc, timezone=tz, read_only=True)
 
     tado_agent = TadoAgent(timezone=config["google_calendar"]["timezone"])
+    tr_agent = TradeRepublicAgent()
 
     marine_cfg = config.get("marine", {})
     marine_agent = MarineAgent(
@@ -115,6 +117,7 @@ def main() -> None:
                 calendar_agents=calendar_agents,
                 marine_agent=marine_agent,
                 tado_agent=tado_agent,
+                tr_agent=tr_agent,
             )
             application.bot_data["brain"] = brain
             application.bot_data["dispatcher"] = dispatcher

@@ -49,6 +49,9 @@
   "tado": {
     "_nota": "Ejecuta tado_setup.py para autenticarte. No se necesita contraseña."
   },
+  "trade_republic": {
+    "_nota": "Ejecuta tr_setup.py una vez para registrar el dispositivo y guardar la sesión. Requiere: pip install pytr && playwright install chromium"
+  },
   "marine": {
     "stormglass_api_key": "TU_STORMGLASS_API_KEY",
     "default_location": "Zarautz"

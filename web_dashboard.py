@@ -133,14 +133,15 @@ _HTML = """<!DOCTYPE html>
 </div>
 
 <script>
-const AGENT_ORDER  = ["GmailReadAgent","GmailSendAgent","CalendarAgent","ReminderAgent","MarineAgent","TadoAgent"];
+const AGENT_ORDER  = ["GmailReadAgent","GmailSendAgent","CalendarAgent","ReminderAgent","MarineAgent","TadoAgent","TradeRepublicAgent"];
 const AGENT_LABELS = {
-  GmailReadAgent: "Gmail Read",
-  GmailSendAgent: "Gmail Send",
-  CalendarAgent:  "Calendar",
-  ReminderAgent:  "Reminder",
-  MarineAgent:    "🌊 Marine",
-  TadoAgent:      "🏠 Tado",
+  GmailReadAgent:      "Gmail Read",
+  GmailSendAgent:      "Gmail Send",
+  CalendarAgent:       "Calendar",
+  ReminderAgent:       "Reminder",
+  MarineAgent:         "🌊 Marine",
+  TadoAgent:           "🏠 Tado",
+  TradeRepublicAgent:  "📈 Trade Republic",
 };
 
 function fmtTime(iso) {
