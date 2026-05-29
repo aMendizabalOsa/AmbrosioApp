@@ -25,10 +25,12 @@ from agents.gmail_read_agent import GmailReadAgent
 from agents.gmail_send_agent import GmailSendAgent
 from agents.marine_agent import MarineAgent
 from agents.reminder_agent import ReminderAgent
+from agents.myinvestor_agent import MyInvestorAgent
 from agents.tado_agent import TadoAgent
+from agents.tapo_agent import TapoAgent
 from agents.traderepublic_agent import TradeRepublicAgent
 from bot.dispatcher import ActionDispatcher
-from bot.handlers import handle_error, handle_message, handle_reset, handle_start, handle_voice
+from bot.handlers import handle_error, handle_message, handle_reset, handle_start, handle_tr_login, handle_voice
 from bot.tool_definitions import TOOLS
 from gemini_brain import GeminiBrain
 from web_dashboard import create_dashboard_app
@@ -39,6 +41,74 @@ logging.basicConfig(
     stream=sys.stdout,
 )
 logger = logging.getLogger(__name__)
+
+
+async def _monitor_tr_sessions(
+    tr_agents: dict,
+    chat_id: int,
+    bot,
+) -> None:
+    """Comprueba las sesiones de Trade Republic y notifica si alguna ha caducado."""
+    for user, agent in tr_agents.items():
+        from pathlib import Path as _Path
+        creds = _Path(f"credentials/tr_credentials_{user}")
+        if not creds.exists() and user == "anjel":
+            creds = _Path("credentials/tr_credentials")
+        if not creds.exists():
+            continue  # usuario sin credenciales todavía configuradas
+        alive = await asyncio.to_thread(agent.check_session)
+        if not alive:
+            await bot.send_message(
+                chat_id=chat_id,
+                text=(
+                    f"⚠️ La sesión de Trade Republic de *{user.capitalize()}* ha caducado\\.\n"
+                    f"Envía `/tr\\_login {user}` para renovarla sin salir del chat\\."
+                ),
+                parse_mode="MarkdownV2",
+            )
+            logger.warning("Sesión TR caducada para %s", user)
+        else:
+            logger.info("Sesión TR OK para %s", user)
+
+
+async def _monitor_mi_sessions(
+    mi_agents: dict,
+    chat_id: int,
+    bot,
+) -> None:
+    """Comprueba las sesiones de MyInvestor y notifica si alguna necesita intervención."""
+    for user, agent in mi_agents.items():
+        from pathlib import Path as _Path
+        creds = _Path(f"credentials/mi_credentials_{user}.json")
+        if not creds.exists() and user == "anjel":
+            creds = _Path("credentials/mi_credentials.json")
+        if not creds.exists():
+            continue
+        try:
+            result = await asyncio.to_thread(agent.check_session)
+            if result is False:
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text=(
+                        f"⚠️ No se pudo renovar la sesión de MyInvestor de "
+                        f"*{user.capitalize()}*\\.\n"
+                        "Ejecuta `python mi\\_setup\\.py` para renovarla\\."
+                    ),
+                    parse_mode="MarkdownV2",
+                )
+                logger.warning("Sesión MI no renovable para %s", user)
+            else:
+                logger.info("Sesión MI OK para %s", user)
+        except RuntimeError as exc:
+            if "OTP" in str(exc):
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text=(
+                        f"⚠️ MyInvestor de *{user.capitalize()}* requiere OTP para renovar\\.\n"
+                        "Ejecuta `python mi\\_setup\\.py` para generar una nueva sesión\\."
+                    ),
+                    parse_mode="MarkdownV2",
+                )
 
 
 def load_config() -> dict:
@@ -80,7 +150,20 @@ def main() -> None:
             calendar_agents[alias] = CalendarAgent(acc, timezone=tz, read_only=True)
 
     tado_agent = TadoAgent(timezone=config["google_calendar"]["timezone"])
-    tr_agent = TradeRepublicAgent()
+    tr_agents  = {u: TradeRepublicAgent(u) for u in ("anjel", "maitane")}
+    mi_agents  = {u: MyInvestorAgent(u)    for u in ("anjel", "maitane")}
+
+    tapo_cfg   = config.get("tapo", {})
+    tapo_agent = (
+        TapoAgent(
+            host=tapo_cfg["host"],
+            password=tapo_cfg["password"],
+            cloud_password=tapo_cfg.get("cloud_password"),
+            rtsp_password=tapo_cfg.get("rtsp_password"),
+        )
+        if tapo_cfg.get("host")
+        else None
+    )
 
     marine_cfg = config.get("marine", {})
     marine_agent = MarineAgent(
@@ -117,7 +200,9 @@ def main() -> None:
                 calendar_agents=calendar_agents,
                 marine_agent=marine_agent,
                 tado_agent=tado_agent,
-                tr_agent=tr_agent,
+                tr_agents=tr_agents,
+                mi_agents=mi_agents,
+                tapo_agent=tapo_agent,
             )
             application.bot_data["brain"] = brain
             application.bot_data["dispatcher"] = dispatcher
@@ -126,6 +211,23 @@ def main() -> None:
             logger.info("APScheduler iniciado.")
             await reminder_agent.initialize()
             logger.info("Recordatorios pendientes re-agendados.")
+
+            _chat_id = config["telegram"]["chat_id"]
+            scheduler.add_job(
+                _monitor_tr_sessions,
+                "interval", hours=20,
+                args=[tr_agents, _chat_id, application.bot],
+                id="tr_session_monitor",
+                replace_existing=True,
+            )
+            scheduler.add_job(
+                _monitor_mi_sessions,
+                "interval", hours=8,
+                args=[mi_agents, _chat_id, application.bot],
+                id="mi_session_monitor",
+                replace_existing=True,
+            )
+            logger.info("Jobs de monitorización de sesiones registrados.")
 
             dashboard_port = config.get("dashboard_port", 8080)
             dash_cfg = uvicorn.Config(
@@ -161,6 +263,7 @@ def main() -> None:
     # --- Registrar handlers ---
     app.add_handler(CommandHandler("start", handle_start))
     app.add_handler(CommandHandler("reset", handle_reset))
+    app.add_handler(CommandHandler("tr_login", handle_tr_login))
 
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))

@@ -184,17 +184,83 @@ TOOLS: list[dict] = [
         },
     },
     {
+        "name": "get_myinvestor_summary",
+        "description": (
+            "Consulta el saldo de la cuenta corriente y el portfolio de fondos/ETFs de MyInvestor. "
+            "En la familia hay dos usuarios: Anjel y Maitane, cada uno con su propia cuenta. "
+            "Usar cuando el usuario pregunte por MyInvestor, sus fondos, su cartera de inversión, "
+            "el saldo de MyInvestor, o cuánto lleva ganado/perdido en sus fondos."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "user": {
+                    "type": "string",
+                    "enum": ["anjel", "maitane"],
+                    "description": (
+                        "Propietario de la cuenta MyInvestor a consultar: 'anjel' o 'maitane'. "
+                        "Si el usuario no especifica, infiere por el contexto o usa 'anjel'."
+                    ),
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "analyze_myinvestor_portfolio",
+        "description": (
+            "Análisis completo del portafolio de MyInvestor: fondos de inversión, ETFs/acciones, "
+            "depósitos a plazo fijo y créditos activos, con P&L detallado por posición. "
+            "En la familia hay dos usuarios: Anjel y Maitane, cada uno con su propia cuenta. "
+            "Usar cuando el usuario pida un análisis detallado, una revisión de sus inversiones, "
+            "quiera ver sus depósitos, sus fondos indexados, cuánto lleva ganado en cada fondo, "
+            "o pida un desglose completo de su situación financiera en MyInvestor."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "user": {
+                    "type": "string",
+                    "enum": ["anjel", "maitane"],
+                    "description": (
+                        "Propietario de la cuenta MyInvestor a consultar: 'anjel' o 'maitane'. "
+                        "Si el usuario no especifica, infiere por el contexto o usa 'anjel'."
+                    ),
+                },
+                "include_deposits": {
+                    "type": "boolean",
+                    "description": "Incluir depósitos a plazo fijo. Por defecto true.",
+                },
+                "include_credits": {
+                    "type": "boolean",
+                    "description": "Incluir créditos/préstamos activos. Por defecto true.",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
         "name": "get_portfolio",
         "description": (
             "Consulta el portfolio de inversiones de Trade Republic: "
             "valor total, posiciones (acciones y ETFs), precio actual, "
             "coste medio y ganancia/pérdida de cada posición. "
+            "En la familia hay dos usuarios: Anjel y Maitane, cada uno con su propia cuenta. "
             "Usar cuando el usuario pregunte por sus inversiones, acciones, "
             "ETFs, portfolio, Trade Republic, rentabilidad o cuánto lleva ganado/perdido."
         ),
         "input_schema": {
             "type": "object",
-            "properties": {},
+            "properties": {
+                "user": {
+                    "type": "string",
+                    "enum": ["anjel", "maitane"],
+                    "description": (
+                        "Propietario de la cuenta Trade Republic a consultar: 'anjel' o 'maitane'. "
+                        "Si el usuario no especifica, infiere por el contexto o usa 'anjel'."
+                    ),
+                },
+            },
             "required": [],
         },
     },
@@ -225,6 +291,56 @@ TOOLS: list[dict] = [
                 },
             },
             "required": [],
+        },
+    },
+    {
+        "name": "get_camera_snapshot",
+        "description": (
+            "Captura una foto en tiempo real de la cámara Tapo del hogar y la envía al chat. "
+            "Usar cuando el usuario pida ver la cámara, pida una foto de casa, "
+            "quiera saber qué hay en casa ahora mismo, o pregunte por la cámara."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+    {
+        "name": "get_camera_status",
+        "description": (
+            "Consulta el estado de la cámara Tapo: modelo, firmware, "
+            "si el modo privacidad está activo y si la detección de movimiento está habilitada. "
+            "Usar cuando el usuario pregunte por el estado de la cámara, "
+            "si está encendida, o la configuración de seguridad."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+    {
+        "name": "camera_ptz",
+        "description": (
+            "Mueve la cámara Tapo en una dirección (izquierda, derecha, arriba, abajo). "
+            "Usar cuando el usuario pida girar la cámara, enfocar a un lado, "
+            "moverla hacia arriba/abajo, o cambiar el ángulo de visión."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "direction": {
+                    "type": "string",
+                    "enum": ["left", "right", "up", "down"],
+                    "description": "Dirección del movimiento: left, right, up o down.",
+                },
+                "steps": {
+                    "type": "integer",
+                    "description": "Intensidad del movimiento, de 1 (poco) a 10 (mucho). Por defecto 5.",
+                },
+            },
+            "required": ["direction"],
         },
     },
 ]

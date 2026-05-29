@@ -18,8 +18,15 @@ from pathlib import Path
 
 from .base_agent import BaseAgent
 
-_CREDENTIALS_FILE = Path("credentials/tr_credentials")
-_COOKIES_DIR      = Path("credentials")
+_COOKIES_DIR = Path("credentials")
+
+def _credentials_file(owner: str) -> Path:
+    new = Path(f"credentials/tr_credentials_{owner}")
+    if not new.exists() and owner == "anjel":
+        old = Path("credentials/tr_credentials")
+        if old.exists():
+            return old
+    return new
 _TICKER_TIMEOUT   = 8.0   # segundos esperando cada ráfaga de tickers
 _DETAIL_TIMEOUT   = 10.0  # segundos esperando instrument_details
 
@@ -30,40 +37,82 @@ class TradeRepublicAgent(BaseAgent):
     """
     Consulta el portfolio de Trade Republic vía pytr.
 
-    No requiere parámetros en el constructor; las credenciales se leen
-    de credentials/tr_credentials y las cookies de credentials/tr_cookies.*.
+    Credenciales en credentials/tr_credentials_{owner} (o tr_credentials para Anjel
+    como fallback). Cookies en credentials/tr_cookies.{phone}.txt.
     """
+
+    def __init__(self, owner: str = "anjel") -> None:
+        self._owner = owner.lower()
+
+    # ------------------------------------------------------------------
+    # API pública
+    # ------------------------------------------------------------------
 
     def run(self) -> dict:
         """Ejecuta en un event loop nuevo (seguro desde asyncio.to_thread)."""
         return asyncio.run(self._async_run())
 
-    async def _async_run(self) -> dict:
+    def check_session(self) -> bool:
+        """Devuelve True si la sesión guardada sigue siendo válida."""
+        try:
+            tr = self._make_api()
+            return bool(tr.resume_websession())
+        except Exception:
+            return False
+
+    def initiate_relogin(self) -> tuple:
+        """
+        Inicia el flujo de re-login: abre Playwright en background para obtener
+        el token WAF y envía el OTP al teléfono.
+        Devuelve (tr_instance, countdown_segundos). Puede tardar 15-30 s.
+        """
+        tr = self._make_api(waf_token="playwright")
+        countdown = tr.initiate_weblogin()
+        return tr, int(countdown)
+
+    @staticmethod
+    def complete_relogin(tr_instance, code: str) -> None:
+        """Completa el re-login con el código OTP recibido por SMS."""
+        tr_instance.complete_weblogin(code)
+
+    # ------------------------------------------------------------------
+    # Internos
+    # ------------------------------------------------------------------
+
+    def _make_api(self, waf_token: str | None = None):
         try:
             from pytr.api import TradeRepublicApi
         except ImportError:
             raise RuntimeError("pytr no está instalado. Ejecuta: pip install pytr")
 
-        if not _CREDENTIALS_FILE.exists():
+        creds_file = _credentials_file(self._owner)
+        if not creds_file.exists():
             raise RuntimeError(
-                "No hay credenciales de Trade Republic. Ejecuta: python tr_setup.py"
+                f"No hay credenciales de Trade Republic para '{self._owner}'. "
+                "Ejecuta: python tr_setup.py"
             )
 
-        with open(_CREDENTIALS_FILE) as f:
+        with open(creds_file) as f:
             lines = f.readlines()
-        phone       = lines[0].strip()
+        phone        = lines[0].strip()
         cookies_file = _COOKIES_DIR / f"tr_cookies.{phone}.txt"
 
-        tr = TradeRepublicApi(
+        kwargs: dict = dict(
             save_cookies=True,
-            credentials_file=str(_CREDENTIALS_FILE),
+            credentials_file=str(creds_file),
             cookies_file=str(cookies_file),
         )
+        if waf_token:
+            kwargs["waf_token"] = waf_token
+        return TradeRepublicApi(**kwargs)
+
+    async def _async_run(self) -> dict:
+        tr = self._make_api()
 
         if not tr.resume_websession():
             raise RuntimeError(
-                "Sesión de Trade Republic caducada o inexistente. "
-                "Ejecuta: python tr_setup.py"
+                f"Sesión de Trade Republic caducada para '{self._owner}'. "
+                "Envía /tr_login para renovarla sin salir del chat."
             )
 
         return await _fetch_portfolio(tr)

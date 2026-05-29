@@ -80,8 +80,13 @@ def _build_gemini_tools(tools: list[dict]) -> list[dict]:
 def _extract_model_parts(response: Any) -> list[dict]:
     """Extrae las parts de una respuesta para guardar en historial."""
     try:
+        candidate = response.candidates[0]
+        content = candidate.content if candidate else None
+        raw_parts = content.parts if content else None
+        if not raw_parts:
+            return [{"text": ""}]
         parts = []
-        for part in response.candidates[0].content.parts:
+        for part in raw_parts:
             if part.function_call is not None:
                 parts.append({
                     "function_call": {
@@ -92,7 +97,7 @@ def _extract_model_parts(response: Any) -> list[dict]:
             elif part.text:
                 parts.append({"text": part.text})
         return parts or [{"text": ""}]
-    except (IndexError, AttributeError):
+    except (IndexError, AttributeError, TypeError):
         return [{"text": ""}]
 
 
@@ -162,10 +167,14 @@ class GeminiBrain:
 
         # Buscar function_call en la respuesta
         try:
-            for part in response.candidates[0].content.parts:
-                if part.function_call is not None and part.function_call.name:
-                    return None, part.function_call.name, dict(part.function_call.args or {})
-        except (IndexError, AttributeError):
+            candidate = response.candidates[0] if response.candidates else None
+            content   = candidate.content if candidate else None
+            parts     = content.parts if content else None
+            if parts:
+                for part in parts:
+                    if part.function_call is not None and part.function_call.name:
+                        return None, part.function_call.name, dict(part.function_call.args or {})
+        except (IndexError, AttributeError, TypeError):
             pass
 
         return response.text, None, None

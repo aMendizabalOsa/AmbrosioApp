@@ -13,16 +13,25 @@ from typing import Optional
 
 
 _TOOL_TO_AGENT: dict[str, str] = {
-    "set_reminder": "ReminderAgent",
-    "create_appointment": "CalendarAgent",
-    "send_email": "GmailSendAgent",
-    "get_email_summary": "GmailReadAgent",
-    "list_upcoming_events": "CalendarAgent",
-    "get_marine_forecast": "MarineAgent",
-    "get_home_climate":   "TadoAgent",
+    "set_reminder":               "ReminderAgent",
+    "create_appointment":         "CalendarAgent",
+    "send_email":                 "GmailSendAgent",
+    "get_email_summary":          "GmailReadAgent",
+    "list_upcoming_events":       "CalendarAgent",
+    "get_marine_forecast":        "MarineAgent",
+    "get_home_climate":           "TadoAgent",
+    "get_portfolio":              "TradeRepublicAgent",
+    "get_myinvestor_summary":     "MyInvestorAgent",
+    "analyze_myinvestor_portfolio": "MyInvestorAgent",
+    "get_camera_snapshot":        "TapoAgent",
+    "get_camera_status":          "TapoAgent",
+    "camera_ptz":                 "TapoAgent",
 }
 
-_ALL_AGENTS = ("GmailReadAgent", "GmailSendAgent", "CalendarAgent", "ReminderAgent", "MarineAgent", "TadoAgent")
+_ALL_AGENTS = (
+    "GmailReadAgent", "GmailSendAgent", "CalendarAgent", "ReminderAgent",
+    "MarineAgent", "TadoAgent", "TapoAgent", "TradeRepublicAgent", "MyInvestorAgent",
+)
 
 
 @dataclass
@@ -120,6 +129,23 @@ def _make_preview(tool_name: str, tool_input: dict) -> str:
             return f"accounts: {', '.join(accounts) if accounts else 'todas'}"
         case "list_upcoming_events":
             return f"max: {tool_input.get('max_results', 10)} eventos"
+        case "get_portfolio":
+            return "Trade Republic portfolio"
+        case "get_myinvestor_summary":
+            return "MyInvestor summary"
+        case "analyze_myinvestor_portfolio":
+            parts = []
+            if not tool_input.get("include_deposits", True):
+                parts.append("sin depósitos")
+            if not tool_input.get("include_credits", True):
+                parts.append("sin créditos")
+            return ", ".join(parts) if parts else "análisis completo"
+        case "get_camera_snapshot":
+            return "snapshot"
+        case "get_camera_status":
+            return "status"
+        case "camera_ptz":
+            return f"{tool_input.get('direction', '?')} ×{tool_input.get('steps', 5)}"
         case _:
             return str(tool_input)[:80]
 

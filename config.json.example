@@ -52,6 +52,19 @@
   "trade_republic": {
     "_nota": "Ejecuta tr_setup.py una vez para registrar el dispositivo y guardar la sesión. Requiere: pip install pytr && playwright install chromium"
   },
+  "myinvestor": {
+    "_nota": "Ejecuta mi_setup.py una vez para autenticarte y guardar el token en credentials/mi_credentials.json"
+  },
+  "tapo": {
+    "host": "192.168.1.X",
+    "password": "TU_CONTRASEÑA_LOCAL_CAMARA",
+    "_nota_password": "Contraseña local configurada en la app Tapo al dar de alta la cámara",
+    "cloud_password": "",
+    "_nota_cloud": "Contraseña de tu cuenta TP-Link/Tapo (opcional)",
+    "rtsp_password": "",
+    "_nota_rtsp": "Contraseña RTSP (si es diferente): app Tapo → Ajustes → Config. avanzada → Stream RTSP",
+    "_nota_snapshot": "Para snapshots: pip install opencv-python-headless  o tener ffmpeg en PATH"
+  },
   "marine": {
     "stormglass_api_key": "TU_STORMGLASS_API_KEY",
     "default_location": "Zarautz"

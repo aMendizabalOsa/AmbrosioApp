@@ -16,8 +16,10 @@ if TYPE_CHECKING:
     from agents.gmail_read_agent import GmailReadAgent
     from agents.gmail_send_agent import GmailSendAgent
     from agents.marine_agent import MarineAgent
+    from agents.myinvestor_agent import MyInvestorAgent
     from agents.reminder_agent import ReminderAgent
     from agents.tado_agent import TadoAgent
+    from agents.tapo_agent import TapoAgent
     from agents.traderepublic_agent import TradeRepublicAgent
 
 import logging
@@ -37,7 +39,9 @@ class ActionDispatcher:
         calendar_agents: "dict[str, CalendarAgent] | None" = None,
         marine_agent: "MarineAgent | None" = None,
         tado_agent: "TadoAgent | None" = None,
-        tr_agent: "TradeRepublicAgent | None" = None,
+        tr_agents: "dict[str, TradeRepublicAgent] | None" = None,
+        mi_agents: "dict[str, MyInvestorAgent] | None" = None,
+        tapo_agent: "TapoAgent | None" = None,
     ) -> None:
         self._gmail_read = gmail_read_agent
         self._gmail_send = gmail_send_agent
@@ -46,17 +50,21 @@ class ActionDispatcher:
         self._calendar_agents: dict[str, CalendarAgent] = calendar_agents or {"anjel": calendar_agent}
         self._marine = marine_agent
         self._tado = tado_agent
-        self._tr = tr_agent
+        self._tr_agents: dict[str, TradeRepublicAgent] = tr_agents or {}
+        self._mi_agents: dict[str, MyInvestorAgent] = mi_agents or {}
+        self._tapo = tapo_agent
 
-    async def dispatch(self, tool_name: str, tool_input: dict) -> str:
+    async def dispatch(self, tool_name: str, tool_input: dict) -> "str | dict":
         """
-        Ejecuta la herramienta correspondiente y devuelve un texto
-        listo para enviar al usuario por Telegram.
+        Ejecuta la herramienta correspondiente.
+        Devuelve str para respuestas de texto, o dict{"_photo": bytes, "_caption": str}
+        para respuestas con imagen (cámara).
         """
         call = tracker.start_call(tool_name, tool_input)
         try:
             result = await self._execute(tool_name, tool_input)
-            tracker.finish_call(call, summary=result)
+            summary = result.get("_caption", str(result)) if isinstance(result, dict) else result
+            tracker.finish_call(call, summary=summary)
             return result
         except Exception as exc:
             tracker.finish_call(call, error=str(exc))
@@ -75,11 +83,21 @@ class ActionDispatcher:
             case "list_upcoming_events":
                 return await asyncio.to_thread(self._list_upcoming_events, **tool_input)
             case "get_portfolio":
-                return await asyncio.to_thread(self._get_portfolio)
+                return await asyncio.to_thread(self._get_portfolio, **tool_input)
+            case "get_myinvestor_summary":
+                return await asyncio.to_thread(self._get_myinvestor_summary, **tool_input)
+            case "analyze_myinvestor_portfolio":
+                return await asyncio.to_thread(self._analyze_myinvestor_portfolio, **tool_input)
             case "get_marine_forecast":
                 return await asyncio.to_thread(self._get_marine_forecast, **tool_input)
             case "get_home_climate":
                 return await asyncio.to_thread(self._get_home_climate, **tool_input)
+            case "get_camera_snapshot":
+                return await asyncio.to_thread(self._get_camera_snapshot)
+            case "get_camera_status":
+                return await asyncio.to_thread(self._get_camera_status)
+            case "camera_ptz":
+                return await asyncio.to_thread(self._camera_ptz, **tool_input)
             case _:
                 return f"Herramienta desconocida: {tool_name}"
 
@@ -332,11 +350,211 @@ class ActionDispatcher:
         return "\n".join(lines)
 
 
-    def _get_portfolio(self) -> str:
-        if self._tr is None:
-            return "⚠️ El agente de Trade Republic no está configurado."
+    def _get_myinvestor_summary(self, user: str = "anjel") -> str:
+        mi = self._mi_agents.get(user.lower())
+        if mi is None:
+            return f"⚠️ No hay cuenta de MyInvestor configurada para {user.capitalize()}."
 
-        data = self._tr.run()
+        data      = mi.run()
+        checking  = data.get("checking", [])
+        portfolio = data.get("portfolio", {})
+
+        lines = [f"🏦 *MyInvestor — {user.capitalize()}*\n"]
+
+        lines.append("*Cuenta corriente:*")
+        for acc in checking:
+            iban = _iban_short(acc.get("iban", ""))
+            bal  = _fmt(acc.get("balance", 0))
+            ret  = acc.get("witholdings", 0)
+            ret_str = f"  _\\(retenciones: {_fmt(ret)} €\\)_" if ret else ""
+            lines.append(f"  {iban}: *{bal} €*{ret_str}")
+
+        pnl      = portfolio.get("pnl", 0)
+        pnl_pct  = portfolio.get("pnl_pct", 0.0)
+        mv_total = portfolio.get("total_market_value", 0)
+        inv_total = portfolio.get("total_invested", 0)
+        pnl_icon = "📈" if pnl >= 0 else "📉"
+        pnl_sign = "+" if pnl >= 0 else ""
+        pct_sign = "+" if pnl_pct >= 0 else ""
+
+        lines.append(f"\n{pnl_icon} *Portfolio fondos/ETFs:*")
+        lines.append(f"  Valor total: *{_fmt(mv_total)} €*")
+        lines.append(f"  Invertido: {_fmt(inv_total)} €")
+        lines.append(f"  P&L: *{pnl_sign}{_fmt(pnl)} €* ({pct_sign}{pnl_pct:.1f}%)")
+
+        positions = portfolio.get("positions", [])
+        if positions:
+            lines.append("\n*Posiciones:*")
+            for pos in positions[:10]:
+                name = _esc(pos.get("name", "?"))
+                mv   = _fmt(pos.get("market_value", 0))
+                p    = pos.get("pnl", 0)
+                pct  = pos.get("pnl_pct", 0.0)
+                s    = "+" if p >= 0 else ""
+                lines.append(f"  • *{name}* — {mv} €  ({s}{_fmt(p)} / {s}{pct:.1f}%)")
+
+        return "\n".join(lines)
+
+    def _analyze_myinvestor_portfolio(
+        self,
+        user: str = "anjel",
+        include_deposits: bool = True,
+        include_credits: bool = True,
+    ) -> str:
+        mi = self._mi_agents.get(user.lower())
+        if mi is None:
+            return f"⚠️ No hay cuenta de MyInvestor configurada para {user.capitalize()}."
+
+        data = mi.get_full_analysis()
+
+        checking = data.get("checking", [])
+        funds    = data.get("funds", [])
+        stocks   = data.get("stocks", [])
+        deposits = data.get("deposits", []) if include_deposits else []
+        credits  = data.get("credits", [])  if include_credits  else []
+
+        lines = [f"🏦 *Análisis MyInvestor — {user.capitalize()}*\n"]
+
+        # --- Cuentas corrientes ---
+        if checking:
+            lines.append("*Cuenta corriente:*")
+            for acc in checking:
+                iban  = _iban_short(acc.get("iban", ""))
+                bal   = _fmt(acc.get("balance", 0))
+                ret   = acc.get("withheld", 0)
+                alias = _esc(acc.get("alias") or "")
+                name  = f"{alias} ({iban})" if alias else iban
+                ret_str = f"  _\\(ret\\. {_fmt(ret)} €\\)_" if ret else ""
+                lines.append(f"  {name}: *{bal} €*{ret_str}")
+            lines.append("")
+
+        # --- Fondos de inversión ---
+        all_investments = funds + stocks
+        if all_investments:
+            total_mv  = sum(p["market_value"]    for p in all_investments)
+            total_ini = sum(p["invested_amount"] for p in all_investments)
+            pnl       = total_mv - total_ini
+            pnl_pct   = round(((total_mv / total_ini) - 1) * 100, 1) if total_ini else 0.0
+            pnl_icon  = "📈" if pnl >= 0 else "📉"
+            pnl_sign  = "+" if pnl >= 0 else ""
+            pct_sign  = "+" if pnl_pct >= 0 else ""
+
+            lines.append(f"{pnl_icon} *Inversiones \\(fondos \\+ ETFs\\):*")
+            lines.append(f"  Valor total: *{_fmt(total_mv)} €*")
+            lines.append(f"  Invertido: {_fmt(total_ini)} €")
+            lines.append(f"  P&L global: *{pnl_sign}{_fmt(pnl)} €* \\({pct_sign}{pnl_pct:.1f}%\\)")
+            lines.append("")
+
+            # Fondos
+            if funds:
+                lines.append("*Fondos de inversión:*")
+                for f in sorted(funds, key=lambda x: x["market_value"], reverse=True):
+                    name = _esc(f["name"])
+                    mv   = _fmt(f["market_value"])
+                    p    = f["pnl"]
+                    pct  = f["pnl_pct"]
+                    s    = "+" if p >= 0 else ""
+                    lines.append(f"  • *{name}*")
+                    lines.append(f"    {mv} € · P&L: {s}{_fmt(p)} € \\({s}{pct:.1f}%\\)")
+                lines.append("")
+
+            # ETFs y acciones
+            if stocks:
+                lines.append("*ETFs / Acciones:*")
+                for st in sorted(stocks, key=lambda x: x["market_value"], reverse=True):
+                    name   = _esc(st["name"])
+                    ticker = f" \\({_esc(st['ticker'])}\\)" if st.get("ticker") else ""
+                    mv     = _fmt(st["market_value"])
+                    p      = st["pnl"]
+                    pct    = st["pnl_pct"]
+                    s      = "+" if p >= 0 else ""
+                    lines.append(f"  • *{name}*{ticker}")
+                    lines.append(f"    {mv} € · P&L: {s}{_fmt(p)} € \\({s}{pct:.1f}%\\)")
+                lines.append("")
+
+        # --- Depósitos ---
+        if deposits:
+            total_dep = sum(d["amount"] for d in deposits)
+            lines.append(f"*Depósitos a plazo \\({_fmt(total_dep)} €\\):*")
+            for d in deposits:
+                name     = _esc(d["name"])
+                amount   = _fmt(d["amount"])
+                tae      = d["interest_rate"]
+                mat      = d.get("maturity", "")
+                interest = _fmt(d["gross_interest"])
+                mat_str  = f" · vence {mat}" if mat else ""
+                lines.append(
+                    f"  • *{name}* — {amount} € · {tae:.2f}% TAE{mat_str}"
+                )
+                if d["gross_interest"] > 0:
+                    lines.append(f"    Interés bruto estimado: {interest} €")
+            lines.append("")
+
+        # --- Créditos ---
+        if credits:
+            lines.append("*Créditos activos:*")
+            for c in credits:
+                name    = _esc(c["name"])
+                drawn   = _fmt(c["drawn_amount"])
+                limit   = _fmt(c["credit_limit"])
+                rate    = c["interest_rate"] * 100
+                lines.append(
+                    f"  • *{name}* — {drawn} € / {limit} € · TIN {rate:.2f}%"
+                )
+            lines.append("")
+
+        if not (checking or all_investments or deposits or credits):
+            return "No se encontraron posiciones en MyInvestor."
+
+        return "\n".join(lines).rstrip()
+
+    # ------------------------------------------------------------------ #
+    # Cámara Tapo                                                          #
+    # ------------------------------------------------------------------ #
+
+    def _get_camera_snapshot(self) -> "str | dict":
+        if self._tapo is None:
+            return "⚠️ La cámara Tapo no está configurada."
+        photo = self._tapo.get_snapshot()
+        caption = f"📷 {datetime.now().strftime('%H:%M:%S')}"
+        return {"_photo": photo, "_caption": caption}
+
+    def _get_camera_status(self) -> str:
+        if self._tapo is None:
+            return "⚠️ La cámara Tapo no está configurada."
+        data  = self._tapo.get_status()
+        name  = _esc(data.get("name", "Cámara"))
+        model = _esc(data.get("model", ""))
+        fw    = _esc(data.get("firmware", ""))
+        priv  = data.get("privacy_mode")
+        mot   = data.get("motion_detection")
+
+        lines = [f"📷 *{name}*"]
+        if model:
+            lines.append(f"  Modelo: {model}")
+        if fw:
+            lines.append(f"  Firmware: {fw}")
+        if priv is not None:
+            lines.append(f"  🔒 Privacidad: *{'ON' if priv else 'OFF'}*")
+        if mot is not None:
+            lines.append(f"  🎯 Detección mov\\.: *{'ON' if mot else 'OFF'}*")
+        lines.append(f"  🟢 Estado: *online*")
+        return "\n".join(lines)
+
+    def _camera_ptz(self, direction: str, steps: int = 5) -> str:
+        if self._tapo is None:
+            return "⚠️ La cámara Tapo no está configurada."
+        self._tapo.ptz_move(direction=direction, steps=steps)
+        _dir_es = {"left": "izquierda", "right": "derecha", "up": "arriba", "down": "abajo"}
+        dir_str = _dir_es.get(direction.lower(), direction)
+        return f"✅ Cámara movida hacia {dir_str}."
+
+    def _get_portfolio(self, user: str = "anjel") -> str:
+        tr = self._tr_agents.get(user.lower())
+        if tr is None:
+            return f"⚠️ No hay cuenta de Trade Republic configurada para {user.capitalize()}."
+
+        data = tr.run()
         positions = data["positions"]
         total_val = data["total_value"]
         total_inv = data["total_invested"]
@@ -349,7 +567,7 @@ class ActionDispatcher:
         pct_sign = "+" if total_pct >= 0 else ""
 
         lines = [
-            f"{pnl_icon} *Portfolio Trade Republic*\n",
+            f"{pnl_icon} *Portfolio Trade Republic — {user.capitalize()}*\n",
             f"💰 Valor total: *{_fmt(total_val)} €*",
             f"  📊 Invertido: {_fmt(total_inv)} €",
             f"  💵 Efectivo: {_fmt(cash)} €",
@@ -375,6 +593,10 @@ class ActionDispatcher:
             lines.append("\n_\\(est\\.\\) precio no disponible en tiempo real; se muestra el coste medio._")
 
         return "\n".join(lines)
+
+
+def _iban_short(iban: str) -> str:
+    return f"···{iban[-4:]}" if len(iban) >= 4 else iban
 
 
 def _fmt(value: float) -> str:

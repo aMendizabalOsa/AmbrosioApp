@@ -26,13 +26,18 @@ def main() -> None:
         sys.exit(1)
 
     print("=== Configuración de Trade Republic ===\n")
+
+    owner_raw = input("¿Para qué usuario? (anjel/maitane) [anjel]: ").strip().lower()
+    owner = owner_raw if owner_raw in ("anjel", "maitane") else "anjel"
+    print(f"Configurando cuenta de: {owner.capitalize()}\n")
+
     phone = input("Número de teléfono (formato internacional, ej: +34600123456): ").strip()
     pin   = input("PIN de 4 dígitos: ").strip()
 
     credentials_dir = pathlib.Path("credentials")
     credentials_dir.mkdir(exist_ok=True)
 
-    credentials_file = credentials_dir / "tr_credentials"
+    credentials_file = credentials_dir / f"tr_credentials_{owner}"
     cookies_file     = credentials_dir / f"tr_cookies.{phone}.txt"
 
     credentials_file.write_text(f"{phone}\n{pin}", encoding="utf-8")
@@ -64,8 +69,8 @@ def main() -> None:
         print(f"ERROR al completar login: {exc}")
         sys.exit(1)
 
-    print(f"\n✅ Login completado. Cookies guardadas en {cookies_file}")
-    print("Ahora puedes preguntar a Ambrosio por tu portfolio de Trade Republic.")
+    print(f"\n✅ Login completado. Credenciales en {credentials_file}, cookies en {cookies_file}")
+    print(f"Ahora puedes preguntar a Ambrosio por el portfolio de {owner.capitalize()} en Trade Republic.")
 
 
 if __name__ == "__main__":

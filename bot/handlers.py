@@ -5,7 +5,9 @@ la llamada a Gemini y el despacho a los agentes.
 
 from __future__ import annotations
 
+import asyncio
 import logging
+from datetime import datetime, timedelta
 
 from telegram import Update
 from telegram.constants import ChatAction
@@ -35,6 +37,31 @@ async def handle_message(
     user_text = update.message.text
     logger.info("Mensaje recibido de chat_id=%s: %r", chat_id, user_text[:60])
 
+    # --- OTP pendiente de Trade Republic ---
+    pending = context.bot_data.get("tr_otp_pending")
+    if pending:
+        if datetime.now() < pending["expires_at"]:
+            code = user_text.strip()
+            if code.isdigit() and len(code) in (4, 5, 6):
+                context.bot_data.pop("tr_otp_pending")
+                try:
+                    from agents.traderepublic_agent import TradeRepublicAgent
+                    await asyncio.to_thread(
+                        TradeRepublicAgent.complete_relogin, pending["api"], code
+                    )
+                    await update.message.reply_text(
+                        f"✅ Sesión de Trade Republic para *{pending['user'].capitalize()}* renovada. "
+                        "Ya puedes consultar el portfolio.",
+                        parse_mode="Markdown",
+                    )
+                except Exception as exc:
+                    await update.message.reply_text(
+                        f"❌ Error al completar login: `{exc}`", parse_mode="Markdown"
+                    )
+                return
+        else:
+            context.bot_data.pop("tr_otp_pending", None)
+
     try:
         brain = context.bot_data["brain"]
         dispatcher = context.bot_data["dispatcher"]
@@ -48,15 +75,12 @@ async def handle_message(
 
         if tool_name and tool_input is not None:
             try:
-                result_text = await dispatcher.dispatch(tool_name, tool_input)
+                result = await dispatcher.dispatch(tool_name, tool_input)
             except Exception as tool_exc:
                 brain.record_tool_error(chat_id, tool_name, str(tool_exc))
                 raise
 
-            await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
-            narration = await brain.process_tool_result(chat_id, tool_name, result_text)
-
-            await update.message.reply_text(narration or result_text)
+            await _send_tool_result(update, context, brain, chat_id, tool_name, result)
 
         elif text_reply:
             await update.message.reply_text(text_reply)
@@ -107,14 +131,12 @@ async def handle_voice(
 
         if tool_name and tool_input is not None:
             try:
-                result_text = await dispatcher.dispatch(tool_name, tool_input)
+                result = await dispatcher.dispatch(tool_name, tool_input)
             except Exception as tool_exc:
                 brain.record_tool_error(chat_id, tool_name, str(tool_exc))
                 raise
 
-            await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
-            narration = await brain.process_tool_result(chat_id, tool_name, result_text)
-            await update.message.reply_text(narration or result_text)
+            await _send_tool_result(update, context, brain, chat_id, tool_name, result)
         elif text_reply:
             await update.message.reply_text(text_reply)
         else:
@@ -143,6 +165,30 @@ async def handle_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> No
             pass
 
 
+async def _send_tool_result(update, context, brain, chat_id, tool_name, result) -> None:
+    """
+    Envía el resultado de una herramienta al chat.
+    Si result es un dict con '_photo', manda la foto + narración de Gemini.
+    Si es str, manda solo texto con narración.
+    """
+    if isinstance(result, dict) and "_photo" in result:
+        photo_bytes: bytes = result["_photo"]
+        caption: str       = result.get("_caption", "")
+        await context.bot.send_photo(
+            chat_id=chat_id,
+            photo=photo_bytes,
+            caption=caption or None,
+        )
+        await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+        narration = await brain.process_tool_result(chat_id, tool_name, caption or "foto enviada")
+        if narration:
+            await update.message.reply_text(narration)
+    else:
+        await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+        narration = await brain.process_tool_result(chat_id, tool_name, result)
+        await update.message.reply_text(narration or result)
+
+
 async def handle_start(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
@@ -157,6 +203,47 @@ async def handle_start(
         "• _¿Qué correos sin leer tengo?_\n"
         "• _¿Qué tengo en el calendario esta semana?_",
         parse_mode="Markdown",
+    )
+
+
+async def handle_tr_login(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> None:
+    """
+    Renueva la sesión de Trade Republic sin salir del chat.
+    Uso: /tr_login [anjel|maitane]
+    """
+    args = context.args or []
+    user = args[0].lower() if args and args[0].lower() in ("anjel", "maitane") else "anjel"
+    chat_id = update.effective_chat.id  # type: ignore[union-attr]
+
+    await update.message.reply_text(  # type: ignore[union-attr]
+        f"🔄 Iniciando sesión de Trade Republic para *{user.capitalize()}*…\n"
+        "_\\(Playwright abre un navegador en segundo plano para el bypass WAF, puede tardar 20–30 s\\)_",
+        parse_mode="MarkdownV2",
+    )
+
+    try:
+        from agents.traderepublic_agent import TradeRepublicAgent
+        agent = TradeRepublicAgent(user)
+        tr_instance, countdown = await asyncio.to_thread(agent.initiate_relogin)
+    except Exception as exc:
+        await update.message.reply_text(  # type: ignore[union-attr]
+            f"❌ Error al iniciar login: `{exc}`", parse_mode="Markdown"
+        )
+        return
+
+    context.bot_data["tr_otp_pending"] = {
+        "user":       user,
+        "api":        tr_instance,
+        "expires_at": datetime.now() + timedelta(seconds=countdown + 60),
+    }
+
+    await update.message.reply_text(  # type: ignore[union-attr]
+        f"📱 Código enviado al teléfono de *{user.capitalize()}*\\.\n"
+        f"Tienes *{countdown}s* — responde aquí con el código OTP recibido por SMS\\.",
+        parse_mode="MarkdownV2",
     )
 
 
