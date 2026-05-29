@@ -166,8 +166,17 @@ class ActionDispatcher:
     def _get_email_summary(
         self,
         accounts: list[str] | None = None,
+        unread_only: bool = True,
+        newer_than: str | None = None,
+        sender: str | None = None,
+        subject: str | None = None,
     ) -> str:
-        all_data = self._gmail_read.run()
+        all_data = self._gmail_read.run(
+            unread_only=unread_only,
+            newer_than=newer_than,
+            sender=sender,
+            subject=subject,
+        )
 
         if accounts:
             data = {alias: emails for alias, emails in all_data.items() if alias in accounts}
@@ -177,7 +186,17 @@ class ActionDispatcher:
         if not data:
             return "No hay cuentas configuradas."
 
-        lines = ["📧 *Correos no leídos*\n"]
+        _filter_parts: list[str] = []
+        if unread_only:
+            _filter_parts.append("no leídos")
+        if newer_than:
+            _filter_parts.append(f"últimos {newer_than}")
+        if sender:
+            _filter_parts.append(f"de: {sender}")
+        if subject:
+            _filter_parts.append(f"asunto: {subject}")
+        _filter_str = f" _{_esc('(' + ', '.join(_filter_parts) + ')')}_" if _filter_parts else ""
+        lines = [f"📧 *Correos*{_filter_str}\n"]
         total = 0
 
         for alias, emails in data.items():

@@ -126,7 +126,16 @@ def _make_preview(tool_name: str, tool_input: dict) -> str:
             return f"to: {to[:60]}"
         case "get_email_summary":
             accounts = tool_input.get("accounts")
-            return f"accounts: {', '.join(accounts) if accounts else 'todas'}"
+            parts = [f"accounts: {', '.join(accounts) if accounts else 'todas'}"]
+            if not tool_input.get("unread_only", True):
+                parts.append("todos")
+            if newer_than := tool_input.get("newer_than"):
+                parts.append(f"últimos {newer_than}")
+            if s := tool_input.get("sender"):
+                parts.append(f"de:{s}")
+            if sub := tool_input.get("subject"):
+                parts.append(f"asunto:{sub}")
+            return " · ".join(parts)
         case "list_upcoming_events":
             return f"max: {tool_input.get('max_results', 10)} eventos"
         case "get_portfolio":

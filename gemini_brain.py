@@ -30,7 +30,11 @@ Si faltan datos para completar una herramienta, pregunta al usuario antes de lla
 Cuando crees recordatorios o citas con fechas relativas ("mañana", "el viernes"),
 calcula la fecha exacta en base a la fecha de hoy que aparece en cada mensaje.
 
-Responde siempre en español.\
+Responde siempre en el mismo idioma que use el usuario en cada mensaje.
+Si escribe en euskera, responde en euskera.
+Si escribe en castellano, responde en castellano.
+Si escribe en inglés, responde en inglés.
+Nunca traduzcas ni incluyas traducciones en la respuesta.\
 """
 
 # Mapa de tipos JSON Schema → tipos Gemini (mayúsculas)

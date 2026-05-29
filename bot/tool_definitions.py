@@ -113,8 +113,10 @@ TOOLS: list[dict] = [
     {
         "name": "get_email_summary",
         "description": (
-            "Obtiene un resumen de los correos no leídos de las cuentas Gmail configuradas. "
-            "Usar cuando el usuario quiera ver el correo, ver mensajes nuevos o pedir un resumen."
+            "Obtiene un resumen de correos de las cuentas Gmail configuradas. "
+            "Permite filtrar por estado (leído/no leído), rango de tiempo, remitente y asunto. "
+            "Usar cuando el usuario quiera ver el correo, mensajes nuevos, correos de alguien "
+            "en concreto, o correos de las últimas horas/días."
         ),
         "input_schema": {
             "type": "object",
@@ -126,6 +128,34 @@ TOOLS: list[dict] = [
                         "Lista opcional de alias de cuentas a consultar "
                         "(por ejemplo ['anjel', 'kaxuela']). "
                         "Si se omite, consulta todas las cuentas."
+                    ),
+                },
+                "unread_only": {
+                    "type": "boolean",
+                    "description": (
+                        "Si true (por defecto), solo muestra correos no leídos. "
+                        "Poner false para buscar en todos los correos."
+                    ),
+                },
+                "newer_than": {
+                    "type": "string",
+                    "description": (
+                        "Limitar a correos más recientes que este valor. "
+                        "Formato Gmail: '1h' (1 hora), '1d' (1 día), '7d' (7 días), '30d' (30 días). "
+                        "Ejemplos: 'correos de hoy' → '1d', 'última semana' → '7d'."
+                    ),
+                },
+                "sender": {
+                    "type": "string",
+                    "description": (
+                        "Filtrar por remitente. Puede ser un email completo o parte "
+                        "del nombre o dirección. Ejemplo: 'amazon', 'juan@ejemplo.com'."
+                    ),
+                },
+                "subject": {
+                    "type": "string",
+                    "description": (
+                        "Buscar correos cuyo asunto contenga esta palabra o frase."
                     ),
                 },
             },

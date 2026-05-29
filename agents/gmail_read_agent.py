@@ -38,15 +38,41 @@ class GmailReadAgent(BaseAgent):
     def __init__(self, accounts: list[dict]) -> None:
         self.accounts = accounts
 
-    def run(self) -> dict[str, list[dict[str, str]]]:
+    def run(
+        self,
+        unread_only: bool = True,
+        newer_than: str | None = None,
+        sender: str | None = None,
+        subject: str | None = None,
+    ) -> dict[str, list[dict[str, str]]]:
+        query = self._build_query(unread_only, newer_than, sender, subject)
+        max_results = 500 if unread_only else 100
         result: dict[str, list[dict[str, str]]] = {}
         for account in self.accounts:
             alias = account["alias"]
             try:
-                result[alias] = self._fetch_for_account(account)
+                result[alias] = self._fetch_for_account(account, query, max_results)
             except Exception as exc:
                 result[alias] = [{"error": str(exc), "nombre": "", "email": "", "asunto": "", "fecha": "", "snippet": ""}]
         return result
+
+    @staticmethod
+    def _build_query(
+        unread_only: bool,
+        newer_than: str | None,
+        sender: str | None,
+        subject: str | None,
+    ) -> str:
+        parts: list[str] = []
+        if unread_only:
+            parts.append("is:unread")
+        if newer_than:
+            parts.append(f"newer_than:{newer_than}")
+        if sender:
+            parts.append(f"from:{sender}")
+        if subject:
+            parts.append(f"subject:{subject}")
+        return " ".join(parts) if parts else "in:inbox"
 
     def _get_service(self, account: dict) -> Any:
         token_path = Path(account["token_file"])
@@ -67,20 +93,23 @@ class GmailReadAgent(BaseAgent):
 
         return build("gmail", "v1", credentials=creds)
 
-    def _fetch_for_account(self, account: dict) -> list[dict[str, str]]:
+    def _fetch_for_account(
+        self, account: dict, query: str, max_results: int = 500
+    ) -> list[dict[str, str]]:
         service = self._get_service(account)
 
         raw_messages: list[dict] = []
         page_token: str | None = None
         while True:
-            kwargs: dict = {"userId": "me", "q": "is:unread", "maxResults": 500}
+            kwargs: dict = {"userId": "me", "q": query, "maxResults": min(max_results, 500)}
             if page_token:
                 kwargs["pageToken"] = page_token
             page = service.users().messages().list(**kwargs).execute()
             raw_messages.extend(page.get("messages", []))
             page_token = page.get("nextPageToken")
-            if not page_token:
+            if not page_token or len(raw_messages) >= max_results:
                 break
+        raw_messages = raw_messages[:max_results]
 
         emails: list[dict[str, str]] = []
         for msg in raw_messages:
